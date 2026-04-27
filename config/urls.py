@@ -31,6 +31,14 @@ urlpatterns = [
     path("api/", include("tutors.urls")),
     path("api/", include("bookings.urls")),
     path("api/", include("reviews.urls")),
+    path("api/adminpanel/", include("adminpanel.urls")),
+    path("api/payments/", include("payments.urls")),
+    path("api/", include("messaging.urls")),
+    path("api/", include("notifications.urls")),
+    path("api/subscriptions/", include("subscriptions.urls")),
+    path("api/payments/", include("payments.urls")),
+    path("api/", include("earnings.urls")),
+    path("api/", include("progress.urls")),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

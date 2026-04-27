@@ -16,6 +16,19 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Strip whitespace from environment variables
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_CALLBACK_URL = os.getenv(
+    "PAYSTACK_CALLBACK_URL",
+    f"{FRONTEND_URL}/payment/callback",
+)
+
+PAYMENT_PROVIDER = os.getenv("PAYMENT_PROVIDER", "paystack")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -46,6 +59,12 @@ INSTALLED_APPS = [
     "tutors",
     "bookings",
     "reviews",
+    "adminpanel",
+    "messaging",
+    "notifications",
+    "subscriptions",
+    "earnings",
+    "progress",
 ]
 
 MIDDLEWARE = [
@@ -81,6 +100,15 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
