@@ -118,3 +118,48 @@ class ScheduledSessionListView(generics.ListAPIView):
             return ScheduledSession.objects.filter(tutor__user=user)
 
         return ScheduledSession.objects.filter(student_parent=user)
+    
+
+class CompleteBookingView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, booking_id):
+        user = request.user
+
+        try:
+            booking = Booking.objects.get(id=booking_id)
+        except Booking.DoesNotExist:
+            return Response(
+                {"detail": "Booking not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        is_tutor_owner = user.role == "tutor" and booking.tutor.user == user
+        is_admin = user.role == "admin" or user.is_staff
+
+        if not is_tutor_owner and not is_admin:
+            return Response(
+                {"detail": "You do not have permission to complete this booking."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if booking.status != "accepted":
+            return Response(
+                {"detail": "Only accepted bookings can be marked as completed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        booking.status = "completed"
+        booking.save(update_fields=["status"])
+
+        booking.sessions.update(is_completed=True)
+
+        create_notification(
+            user=booking.student_parent,
+            notification_type="booking",
+            title="Session completed",
+            body=f"Your {booking.subject} session has been marked as completed. You may review this tutor after 30 days.",
+            action_url="/student-dashboard",
+        )
+
+        return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)

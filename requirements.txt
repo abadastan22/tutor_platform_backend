@@ -9,3 +9,11 @@ stripe==10.12.0
 requests==2.32.3
 django-filter==24.2.0
 drf-yasg==1.21.6
+gunicorn
+python-dotenv
+dj-database-url
+whitenoise
+psycopg2-binary
+redis
+channels
+channels-redis

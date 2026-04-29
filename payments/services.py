@@ -10,7 +10,7 @@ class PaymentError(Exception):
 
 
 def initialize_payment(booking, provider=None):
-    provider = provider or settings.PAYMENT_PROVIDER
+    provider = provider or getattr(settings, "PAYMENT_PROVIDER", "stripe")
 
     if provider == "stripe":
         return initialize_stripe_payment(booking)
@@ -21,37 +21,46 @@ def initialize_payment(booking, provider=None):
     raise PaymentError("Unsupported payment provider.")
 
 
+# =========================
+# STRIPE PAYMENT
+# =========================
 def initialize_stripe_payment(booking):
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
-    amount_kobo_or_cents = int(booking.amount * 100)
+    amount_cents = int(float(booking.amount) * 100)
 
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        mode="payment",
-        customer_email=booking.student_parent.email,
-        line_items=[
-            {
-                "price_data": {
-                    "currency": "ngn",
-                    "product_data": {
-                        "name": f"Tutoring Session - {booking.subject}",
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="payment",
+            customer_email=booking.student_parent.email,
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "ngn",
+                        "product_data": {
+                            "name": f"Tutoring Session - {booking.subject}",
+                        },
+                        "unit_amount": amount_cents,
                     },
-                    "unit_amount": amount_kobo_or_cents,
-                },
-                "quantity": 1,
-            }
-        ],
-        success_url=f"{settings.FRONTEND_URL}/student-dashboard?payment=success",
-        cancel_url=f"{settings.FRONTEND_URL}/student-dashboard?payment=cancelled",
-        metadata={
-            "booking_id": str(booking.id),
-        },
-    )
+                    "quantity": 1,
+                }
+            ],
+            success_url=f"{settings.FRONTEND_URL}/payment-success?booking_id={booking.id}",
+            cancel_url=f"{settings.FRONTEND_URL}/payment-cancel?booking_id={booking.id}",
+            metadata={
+                "booking_id": str(booking.id),
+                "student_parent_id": str(booking.student_parent_id),
+                "tutor_id": str(booking.tutor_id),
+            },
+        )
+
+    except Exception as exc:
+        raise PaymentError(f"Stripe initialization failed: {str(exc)}")
 
     booking.payment_status = "pending"
     booking.payment_reference = session.id
-    booking.save()
+    booking.save(update_fields=["payment_status", "payment_reference"])
 
     return {
         "provider": "stripe",
@@ -62,6 +71,9 @@ def initialize_stripe_payment(booking):
     }
 
 
+# =========================
+# PAYSTACK PAYMENT
+# =========================
 def initialize_paystack_payment(booking):
     if not settings.PAYSTACK_SECRET_KEY:
         raise PaymentError("PAYSTACK_SECRET_KEY is not configured.")
@@ -70,9 +82,9 @@ def initialize_paystack_payment(booking):
 
     payload = {
         "email": booking.student_parent.email,
-        "amount": int(booking.amount * 100),
+        "amount": int(float(booking.amount) * 100),
         "reference": reference,
-        "callback_url": settings.PAYSTACK_CALLBACK_URL,
+        "callback_url": f"{settings.FRONTEND_URL}/payment-success?booking_id={booking.id}",
         "metadata": {
             "booking_id": booking.id,
             "student_parent_id": booking.student_parent_id,
@@ -85,21 +97,25 @@ def initialize_paystack_payment(booking):
         "Content-Type": "application/json",
     }
 
-    response = requests.post(
-        "https://api.paystack.co/transaction/initialize",
-        json=payload,
-        headers=headers,
-        timeout=20,
-    )
+    try:
+        response = requests.post(
+            "https://api.paystack.co/transaction/initialize",
+            json=payload,
+            headers=headers,
+            timeout=20,
+        )
 
-    result = response.json()
+        result = response.json()
+
+    except Exception as exc:
+        raise PaymentError(f"Paystack request failed: {str(exc)}")
 
     if not result.get("status"):
         raise PaymentError(result.get("message", "Could not initialize Paystack payment."))
 
     booking.payment_status = "pending"
     booking.payment_reference = reference
-    booking.save()
+    booking.save(update_fields=["payment_status", "payment_reference"])
 
     return {
         "provider": "paystack",
@@ -111,18 +127,28 @@ def initialize_paystack_payment(booking):
     }
 
 
+# =========================
+# PAYSTACK VERIFY
+# =========================
 def verify_paystack_payment(reference):
+    if not settings.PAYSTACK_SECRET_KEY:
+        raise PaymentError("PAYSTACK_SECRET_KEY is not configured.")
+
     headers = {
         "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
     }
 
-    response = requests.get(
-        f"https://api.paystack.co/transaction/verify/{reference}",
-        headers=headers,
-        timeout=20,
-    )
+    try:
+        response = requests.get(
+            f"https://api.paystack.co/transaction/verify/{reference}",
+            headers=headers,
+            timeout=20,
+        )
 
-    result = response.json()
+        result = response.json()
+
+    except Exception as exc:
+        raise PaymentError(f"Verification request failed: {str(exc)}")
 
     if not result.get("status"):
         raise PaymentError(result.get("message", "Payment verification failed."))

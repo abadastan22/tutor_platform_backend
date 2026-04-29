@@ -23,10 +23,16 @@ class TutorLedgerEntrySerializer(serializers.ModelSerializer):
 
 
 class TutorPayoutSerializer(serializers.ModelSerializer):
+    tutor_name = serializers.SerializerMethodField()
+    tutor_email = serializers.SerializerMethodField()
+
     class Meta:
         model = TutorPayout
         fields = [
             "id",
+            "tutor",
+            "tutor_name",
+            "tutor_email",
             "amount",
             "platform_fee",
             "net_amount",
@@ -35,3 +41,9 @@ class TutorPayoutSerializer(serializers.ModelSerializer):
             "created_at",
             "paid_at",
         ]
+
+    def get_tutor_name(self, obj):
+        return obj.tutor.user.get_full_name() or obj.tutor.user.username
+
+    def get_tutor_email(self, obj):
+        return obj.tutor.user.email
